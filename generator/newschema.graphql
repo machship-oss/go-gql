@@ -1,0 +1,52 @@
+directive @webhook on OBJECT | INTERFACE
+
+# ---- INTERFACES ---- #
+
+interface IBase {
+    id: ID!
+    dateCreatedUTC: DateTime! @search
+}
+
+interface ITestInterface {
+    id: ID!
+
+    name: String! @id
+    notes: [Note] @hasInverse(field: belongsTo)
+}
+
+type Note implements IBase {
+    note: String!
+    belongsTo: ITestInterface @hasInverse(field: notes)
+}
+
+type Year implements IBase @secret(field: "fakePassword") {
+    year: Int!
+    dates: [Date] @hasInverse(field: year)
+    weeks: [Week] @hasInverse(field: year)
+}
+
+type Season implements IBase & ITestInterface {
+    months: [Month] @hasInverse(field: season)
+}
+
+type Month implements IBase & ITestInterface {
+    name: String! @id
+    number: Int! @search
+    season: Season! @hasInverse(field: months)
+    weeks: [Week] @hasInverse(field: month)
+    dates: [Date] @hasInverse(field: month)
+}
+
+type Week implements IBase {
+    numberInYear: Int!
+    year: Year! @hasInverse(field: weeks)
+    month: Month! @hasInverse(field: weeks)
+    dates: [Date] @hasInverse(field: week)
+}
+
+type Date implements IBase & ITestInterface @webhook(type: "com.someone.something.date", source: "https://github.com/someone/something/v1/type/date") {
+    year: Year @hasInverse(field: dates)
+    month: Month @hasInverse(field: dates)
+    week: Week @hasInverse(field: dates)
+}
+
