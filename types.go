@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+//test
+
 type Bool struct {
 	Bool  bool
 	Valid bool // Valid is true if Bool is not NULL
