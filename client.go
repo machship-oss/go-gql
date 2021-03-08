@@ -142,6 +142,90 @@ func (c *GraphQL) BulkMutation(ctx context.Context, cont *MutationContainer) (er
 	return nil
 }
 
+func (c *GraphQL) DoRaw(ctx context.Context, query string, vars map[string]interface{}, outputTypes map[string]interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%s", r)
+		}
+	}()
+
+	in := struct {
+		Query     string                 `json:"query"`
+		Variables map[string]interface{} `json:"variables,omitempty"`
+	}{
+		Query:     query,
+		Variables: vars,
+	}
+
+	fmt.Println(in.Query)
+	varJsonBytes, _ := json.Marshal(&in.Variables)
+	fmt.Println()
+	fmt.Println(string(varJsonBytes))
+	fmt.Println()
+
+	var buf bytes.Buffer
+	err = json.NewEncoder(&buf).Encode(in)
+	if err != nil {
+		return err
+	}
+
+	resp, err := ctxhttp.Post(ctx, c.httpClient, c.url, "application/json", &buf)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	var bodyBuf bytes.Buffer
+	tee := io.TeeReader(resp.Body, &bodyBuf)
+	bodyBytes, _ := ioutil.ReadAll(tee)
+	fmt.Println(string(bodyBytes))
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(&bodyBuf)
+		return fmt.Errorf("non-200 OK status code: %v body: %q", resp.Status, body)
+	}
+
+	var out struct {
+		Data   *json.RawMessage `json:"data"`
+		Errors GraphqlErrors    `json:"errors"`
+		// Extensions interface{} // todo: add this later. should conform to some standard
+	}
+
+	err = json.NewDecoder(&bodyBuf).Decode(&out)
+	if err != nil {
+		// TODO: Consider including response body in returned error, if deemed helpful.
+		return err
+	}
+
+	var outData interface{}
+
+	if out.Data != nil {
+		// err := jsonutil.UnmarshalGraphQL(*out.Data, output) //TBC on how to do this with dynamic results
+		err := json.Unmarshal(*out.Data, &outData) //TBC on how to do this with dynamic results
+		if err != nil {
+			// TODO: Consider including response body in returned error, if deemed helpful.
+			return err
+		}
+	}
+
+	if len(out.Errors) > 0 {
+		return out.Errors
+	}
+
+	//this may panic, so there is a defer recover on this method
+	msgMap := outData.(map[string]interface{})
+	for k, mm := range msgMap {
+		//find it in the output map:
+		ot, ok := outputTypes[k]
+		if ok {
+			bts, _ := json.Marshal(mm)
+			_ = json.Unmarshal(bts, &ot)
+		}
+	}
+
+	return nil
+}
+
 func (c *GraphQL) do(ctx context.Context, cont queryPart, outputTypes map[string]interface{}) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
